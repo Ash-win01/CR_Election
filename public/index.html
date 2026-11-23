@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CR Election</title>
+<style>
+  :root { --bg:#f5f6fa; --card:#fff; --text:#1d2433; --muted:#667085; --accent:#3b5bdb; --line:#e3e6ee; }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg:#12151c; --card:#1b1f2a; --text:#e8ebf3; --muted:#9aa3b5; --accent:#748ffc; --line:#2b3140; }
+  }
+  * { box-sizing: border-box; }
+  body { margin:0; font-family:system-ui,sans-serif; background:var(--bg); color:var(--text); }
+  main { max-width:520px; margin:0 auto; padding:24px 16px; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:14px; padding:20px; margin-bottom:16px; }
+  h1 { font-size:1.4rem; margin:0 0 4px; } p { color:var(--muted); }
+  button { background:var(--accent); color:#fff; border:0; border-radius:10px; padding:12px 18px; font-size:1rem; cursor:pointer; width:100%; }
+  button:disabled { opacity:.5; cursor:not-allowed; }
+  button.ghost { background:transparent; color:var(--muted); border:1px solid var(--line); margin-top:8px; }
+  label.cand { display:flex; align-items:center; gap:12px; padding:12px; border:1px solid var(--line); border-radius:10px; margin-bottom:8px; cursor:pointer; }
+  label.cand:has(input:checked) { border-color:var(--accent); background:color-mix(in srgb, var(--accent) 10%, transparent); }
+  .msg { padding:10px 12px; border-radius:10px; margin-bottom:12px; background:color-mix(in srgb, var(--accent) 12%, transparent); }
+  .err { background:#ffe3e3; color:#a61e1e; }
+  a { color:var(--accent); }
+</style>
+</head>
+<body>
+<main>
+  <div class="card">
+    <h1>Class Representative Election</h1>
+    <p>Vote for one candidate. Your vote is anonymous.</p>
+  </div>
+  <div id="app"></div>
+  <p style="text-align:center"><a href="/results">View results</a></p>
+</main>
+
+<script>
+const app = document.getElementById('app');
+const errors = {
+  ineligible: 'Your roll number is not eligible to vote in this election.',
+  state: 'Login session expired. Please try again.',
+  token: 'Login failed. Please try again.',
+  auth: 'Login failed. Please try again.',
+  session: 'Could not start a session. Please try again.',
+};
+const el = (html) => { const d = document.createElement('div'); d.innerHTML = html; return d; };
+
+async function init() {
+  const me = await (await fetch('/api/me')).json();
+  app.innerHTML = '';
+  const err = new URLSearchParams(location.search).get('error');
+  if (err) app.append(el(`<div class="msg err">${errors[err] || 'Something went wrong.'}</div>`));
+
+  if (!me.loggedIn) {
+    const c = el(`<div class="card"><p id="st"></p><button id="login">Login with DAuth</button></div>`);
+    if (me.state === 'not_started') c.querySelector('#st').textContent = 'Voting has not started yet.';
+    else if (me.state === 'ended') c.querySelector('#st').textContent = 'Voting has ended.';
+    else c.querySelector('#st').textContent = 'Log in with your DAuth account to vote.';
+    c.querySelector('#login').onclick = () => (location.href = '/dlogin');
+    app.append(c);
+    return;
+  }
+
+  if (me.hasVoted) {
+    const c = el(`<div class="card"><h1>You have already voted</h1><p>Thank you for participating.</p><button class="ghost" id="out">Logout</button></div>`);
+    c.querySelector('#out').onclick = logout;
+    app.append(c); return;
+  }
+  if (me.state !== 'open') {
+    const c = el(`<div class="card"><p>${me.state === 'ended' ? 'Voting has ended.' : 'Voting has not started yet.'}</p><button class="ghost" id="out">Logout</button></div>`);
+    c.querySelector('#out').onclick = logout;
+    app.append(c); return;
+  }
+
+  const cands = await (await fetch('/api/candidates')).json();
+  const card = el(`<div class="card"><p>Logged in as <b id="who"></b></p><div id="list"></div>
+    <button id="submit" disabled>Cast vote</button><button class="ghost" id="out">Logout</button></div>`);
+  card.querySelector('#who').textContent = `${me.name} (${me.roll})`;
+  const list = card.querySelector('#list');
+  cands.forEach((c) => {
+    const l = document.createElement('label'); l.className = 'cand';
+    const r = document.createElement('input'); r.type = 'radio'; r.name = 'cand'; r.value = c.id;
+    const s = document.createElement('span'); s.textContent = c.name;
+    l.append(r, s); list.append(l);
+  });
+  const btn = card.querySelector('#submit');
+  list.addEventListener('change', () => (btn.disabled = false));
+  card.querySelector('#out').onclick = logout;
+  btn.onclick = async () => {
+    const sel = list.querySelector('input:checked');
+    const name = sel.parentElement.textContent;
+    if (!confirm(`Confirm your vote for ${name}? This cannot be changed.`)) return;
+    btn.disabled = true;
+    const res = await fetch('/api/vote', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-csrf-token': me.csrf },
+      body: JSON.stringify({ candidateId: Number(sel.value) }),
+    });
+    const data = await res.json();
+    app.innerHTML = '';
+    app.append(el(res.ok
+      ? `<div class="card"><h1>Vote recorded ✅</h1><p>Thank you for voting.</p></div>`
+      : `<div class="msg err">${data.error || 'Error'}</div>`));
+  };
+  app.append(card);
+}
+async function logout() { await fetch('/auth/logout', { method: 'POST' }); location.href = '/'; }
+init();
+</script>
+</body>
+</html>

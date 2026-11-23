@@ -1,0 +1,11 @@
+{
+  "name": "cr-election",
+  "version": "1.0.0",
+  "private": true,
+  "dependencies": {
+    "cookie-session": "^2.1.0",
+    "express": "^4.19.2",
+    "mongodb": "^6.9.0"
+  },
+  "engines": { "node": ">=18" }
+}

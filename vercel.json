@@ -1,0 +1,8 @@
+{
+  "rewrites": [
+    { "source": "/results", "destination": "/results.html" },
+    { "source": "/api/:path*", "destination": "/api" },
+    { "source": "/auth/:path*", "destination": "/api" },
+    { "source": "/dlogin", "destination": "/api" }
+  ]
+}
